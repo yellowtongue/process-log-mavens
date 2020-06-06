@@ -319,7 +319,7 @@ else:
                     players[player][NOTES] = players[player][NOTES] + (str(handTime) +
                                               " table " + table +
                                               " hand (" + handNumber + ") " +
-                                              "initial buy in " + str(stack) + os.linesep)
+                                              "initial buy in " + "{0:.2f}".format(stack) + os.linesep)
                     csvRows.append([handTime,table,handNumber,player,"initial buy in",stack,""])
                 else:
                     # check for consistent state of chips from last hand
@@ -331,42 +331,48 @@ else:
                         if (players[player][table][WAITING] or players[player][table][LEFT]):
                             if (stack > players[player][table][LATEST]):
                                 adjustment = stack - players[player][table][LATEST]
-                                players[player][table][LATEST] = stack
-                                players[player][table][IN] += adjustment
-                                players[player][IN] += adjustment
-                                action = "player returned with " if (players[player][table][LEFT]) else "while waiting added on by "
-                                players[player][NOTES] = (players[player][NOTES] + str(handTime) + " table " + table +
-                                                          " hand (" + handNumber + ") " + action + str(adjustment) + os.linesep)
-                                csvRows.append([handTime,table,handNumber,player,"add on while waiting",adjustment,""])
+                                if ("{0:.2f}".format(adjustment) != "0.00"):
+                                    players[player][table][LATEST] = stack
+                                    players[player][table][IN] += adjustment
+                                    players[player][IN] += adjustment
+                                    action = "player returned with " if (players[player][table][LEFT]) else "while waiting added on by "
+                                    players[player][NOTES] = (players[player][NOTES] + str(handTime) + " table " + table +
+                                            " hand (" + handNumber + ") " + action + "{0:.2f}".format(adjustment) + os.linesep)
+                                    csvRows.append([handTime,table,handNumber,player,"add on while waiting",adjustment,""])
                             else:
                                 adjustment = players[player][table][LATEST] - stack
-                                players[player][table][LATEST] = stack
-                                players[player][table][OUT] += adjustment
-                                players[player][OUT] += adjustment
-                                players[player][NOTES] = (players[player][NOTES] + str(handTime) + " " + table + " hand (" + handNumber + ") " +
-                                                          "while waiting reduced by " + str(adjustment) + os.linesep)
-                                csvRows.append([handTime,table,handNumber,player,"reduction while waiting","",adjustment])
+                                if ("{0:.2f}".format(adjustment) != "0.00"):
+                                    players[player][table][LATEST] = stack
+                                    players[player][table][OUT] += adjustment
+                                    players[player][OUT] += adjustment
+                                    players[player][NOTES] = (players[player][NOTES] + str(handTime) + " " + table + " hand (" + handNumber + ") " +
+                                            "while waiting reduced by " + "{0:.2f}".format(adjustment) + os.linesep)
+                                    csvRows.append([handTime,table,handNumber,player,"reduction while waiting","",adjustment])
                         else:
-                            print("Inconsistent state for " + player + " in table " + table + " hand " + handNumber + " has " + str(stack) +
-                                  " expected " + str(players[player][table][LATEST]))
-                            action = ''
-                            adjustment = 0
-                            if (stack > players[player][table][LATEST]):
-                                adjustment = stack - players[player][table][LATEST]
-                                players[player][table][LATEST] = stack
-                                players[player][table][IN] += adjustment
-                                players[player][IN] += adjustment
-                                action = "adjusting for consistency - adding on "
-                            else:
-                                adjustment = players[player][table][LATEST] - stack
-                                players[player][table][LATEST] = stack
-                                players[player][table][OUT] += adjustment
-                                players[player][OUT] += adjustment
-                                action = "adjusting for consistency - deducting "
+                            if ("{0:.2f}".format(stack) != "{0:.2f}".format(players[player][table][LATEST])):
+                                print("Inconsistent state for " + player + " in table " + table + " hand " + handNumber + " has " + str(stack) +
+                                        " expected " + "{0:.2f}".format(players[player][table][LATEST]))
+                                action = ''
+                                adjustment = 0
+                                if (stack > players[player][table][LATEST]):
+                                    adjustment = stack - players[player][table][LATEST]
+                                    if ("{0:.2f}".format(adjustment) != "0.00"):
+                                        players[player][table][LATEST] = stack
+                                        players[player][table][IN] += adjustment
+                                        players[player][IN] += adjustment
+                                        action = "adjusting for consistency - adding on "
+                                else:
+                                    adjustment = players[player][table][LATEST] - stack
+                                    if ("{0:.2f}".format(adjustment) != "0.00"):
+                                        players[player][table][LATEST] = stack
+                                        players[player][table][OUT] += adjustment
+                                        players[player][OUT] += adjustment
+                                        action = "adjusting for consistency - deducting "
 
-                            players[player][NOTES] = (players[player][NOTES] + str(handTime) + " table " + table +
-                                                      " hand (" + handNumber + ") " + action + str(adjustment) + os.linesep)
-                            csvRows.append([handTime,table,handNumber,player,action,adjustment,""])
+                                if ("{0:.2f}".format(adjustment) != "0.00"):
+                                    players[player][NOTES] = (players[player][NOTES] + str(handTime) + " table " + table +
+                                            " hand (" + handNumber + ") " + action + "{0:.2f}".format(adjustment) + os.linesep)
+                                    csvRows.append([handTime,table,handNumber,player,action,adjustment,""])
 
                 # player is active at this table, so mark the LEFT attribute for the tabe as False
                 players[player][table][LEFT] = False
@@ -390,7 +396,7 @@ else:
                 players[player][table][IN] += additional
                 players[player][table][LATEST] += additional
                 players[player][NOTES] = (players[player][NOTES] + str(handTime) + " table " + table +  " hand (" + handNumber + ") " +
-                                          "added on " + str(additional) + os.linesep)
+                        "added on " + "{0:.2f}".format(additional) + os.linesep)
                 csvRows.append([handTime,table,handNumber,player,"add on",additional,""])
 
 
@@ -424,7 +430,7 @@ else:
                     players[player][table][LATEST] = 0
                     players[player][table][WAITING] = True
                     players[player][NOTES] = (players[player][NOTES] + str(handTime) + " table " + table + " hand (" + handNumber + ") " +
-                                          "stood up with " + str(amount) + os.linesep)
+                            "stood up with " + "{0:.2f}".format(amount) + os.linesep)
                     csvRows.append([handTime,table,handNumber,player,"stood up with","",amount])
                     players[player][table][LEFT] = True
 
@@ -451,7 +457,7 @@ for table in tables:
             players[player][table][LEFT] = True
             players[player][NOTES] = (players[player][NOTES] + str(tables[table][LAST]) + " table " + table +
                                       " hand (" + tables[table][LATEST] + ") " +
-                              "ended table with " + str(amount) + os.linesep)
+                                      "ended table with " + "{0:.2f}".format(amount) + os.linesep)
             csvRows.append([tables[table][LAST],table,tables[table][LATEST],player,"ended table with","",amount])
 
 netBalance = 0
@@ -472,20 +478,20 @@ for player in players.keys():
     alias = player
     if (player in resolvedScreenNames):
         alias = resolvedScreenNames[player][NAME]
-    players[player][NOTES] = (players[player][NOTES] + "Total IN " + str(cashIn) + os.linesep)
-    players[player][NOTES] = (players[player][NOTES] + "Total OUT " + str(cashOut) + os.linesep)
+    players[player][NOTES] = (players[player][NOTES] + "Total IN " + "{0:.2f}".format(cashIn) + os.linesep)
+    players[player][NOTES] = (players[player][NOTES] + "Total OUT " + "{0:.2f}".format(cashOut) + os.linesep)
     if (cashIn == cashOut):
         players[player][NOTES] = (players[player][NOTES] +  player + ' breaks even.' + os.linesep)
         disposition = "due"
     elif (cashIn > cashOut):
         diff = cashIn - cashOut
         netBalance += diff
-        players[player][NOTES] = (players[player][NOTES] +  player + NEGATIVE_STATE + str(diff) + os.linesep)
+        players[player][NOTES] = (players[player][NOTES] +  player + NEGATIVE_STATE + "{0:.2f}".format(diff) + os.linesep)
         disposition = "owes"
     elif (cashIn < cashOut):
         diff = cashOut - cashIn
         netBalance -= diff
-        players[player][NOTES] = (players[player][NOTES] +  player + POSITIVE_STATE + str(diff) + os.linesep)
+        players[player][NOTES] = (players[player][NOTES] +  player + POSITIVE_STATE + "{0:.2f}".format(diff) + os.linesep)
         disposition = "due"
 
     csvBalances.append([sessionDate,disposition,alias,diff,note])
@@ -496,7 +502,7 @@ for player in players.keys():
         print(players[player][NOTES])
         print("")
 
-print("Net balance: " + str(netBalance))
+print("Net balance: " + "{0:.2f}".format(netBalance))
 
 if (args.doCsv):
     # Output CSV file of transactions
