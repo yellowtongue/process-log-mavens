@@ -38,6 +38,7 @@
 # 2020-04-28 v0.2 email results
 # 2020-05-12 v0.4 bug fixes
 # 2020-05-15 v0.5 added glob work
+# 2020-05-15 v0.6 incorporate suggested fixes for numeric formatting and text matching for names
 #
 
 import argparse
@@ -306,7 +307,7 @@ else:
 
         for line in hands[handNumber][TEXT].splitlines():
             # the text match to look for a seated player and see their chip amount
-            seat = re.search("Seat \d+: (\w+) \(([\d.]+)\)",line)
+            seat = re.search("Seat \d+: ([\w-]+) \(([\d.]+)\)",line)
             if (seat != None):
                 player = seat.group(1)
                 stack = float(seat.group(2))
@@ -384,7 +385,7 @@ else:
                     players[player][table][WAITING] = False
 
             # the text to match for an add on
-            addOn = re.search("(\w+) adds ([\d.]+) chip",line)
+            addOn = re.search("([\w-]+) adds ([\d.]+) chip",line)
             if (addOn != None):
                 player = addOn.group(1)
                 additional = float(addOn.group(2))
@@ -401,7 +402,7 @@ else:
 
 
             # the text to check for a win
-            winner = re.search("(\w+) (wins|splits).*Pot *\d? *\(([\d.]+)\)",line)
+            winner = re.search("([\w-]+) (wins|splits).*Pot *\d? *\(([\d.]+)\)",line)
             if (winner != None):
                 player = winner.group(1)
                 win = float(winner.group(3))
@@ -506,7 +507,7 @@ print("Net balance: " + "{0:.2f}".format(netBalance))
 
 if (args.doCsv):
     # Output CSV file of transactions
-    with open(CSVTRANS, 'w', newline='') as csvfile:
+    with open(CSVTRANS, 'w', encoding="utf-8", newline='') as csvfile:
         logwriter = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
         logwriter.writerow(csvHeader)
         for row in csvRows:
@@ -516,7 +517,7 @@ if (args.doCsv):
         print("CSV content written to " + CSVTRANS)
 
     # Output CSV file of balances
-    with open(CSVBALANCE, 'w', newline='') as csvfile:
+    with open(CSVBALANCE, 'w', encoding="utf-8", newline='') as csvfile:
         logwriter = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
         logwriter.writerow(csvBalanceHeader)
         for row in csvBalances:
