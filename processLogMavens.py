@@ -81,6 +81,7 @@ NAME="name"
 UNIT="unit"
 EMAIL="email"
 
+# constants for processing INI and setting configurable defaults
 CSV_NOTE="CsvNote"
 CSVTRANS="CsvTransactionsFile"
 CSVBALANCE="CsvBalancesFile"
@@ -89,16 +90,15 @@ FROMADDRESS = 'EmailFromAdress'
 CCADDRESS = 'EmailCcAddress'
 SMTPSERVER = 'EmailSmtpServer'
 SMTPPORT = 'EmailSmtpPort'
+POSITIVE_STATE = "PositiveStateWords"
+NEGATIVE_STATE = "NegativeStateWords"
+ROSTER_FILE =  "RosterFile"
 # end script level constants
 
 # configurable constants
 # these are constants that are meant to be configurable - they could be edited here,
-# or specified in a configuration file that is external to this script and cheked for at run time
+# or specified in a configuration file that is external to this script and checked for at run time
 # CSV and notes
-POSITIVE_STATE = "PositiveStateWords"
-NEGATIVE_STATE = "NegativeStateWords"
-
-
 DEFAULT_OPTIONS = {
     CSVBALANCE: "balances.csv",
     CSVTRANS: "gamelog.csv",
@@ -111,7 +111,10 @@ DEFAULT_OPTIONS = {
     FROMADDRESS: 'me0@mydomain.tld',
     CCADDRESS: 'me@mydomain.tld',
     SMTPSERVER: 'mail.mydomain.tld',
-    SMTPPORT: '26'
+    SMTPPORT: '26',
+
+    # roster file
+    ROSTER_FILE: 'roster.json'
 }
 
 # end configurable constants
@@ -172,12 +175,14 @@ csvBalanceHeader =  ["Date",
                      ]
 
 # resolvedScreenNames dictionary takes in Poker Mavens Screen Name as has info needed for processing
+# The preferred way of including this information is to populate an external JSON file and
+# list that JSON file in the INI file using the RosterFile setting
 #               Structure
 #               KEY - Poker Mavens screen name
 #               NAME - short name used in player ledger
 #               EMAIL - email address for the player for sending player notes for session
 resolvedScreenNames = {
-               'MyScreenName':{NAME:'me',EMAIL:"me@mydomain.tld"},
+               "MyScreenName":{"name":"me","email":"me@mydomain.tld"},
                }
 
 # end of data structures
@@ -223,10 +228,17 @@ sessionDate = datetime.datetime.now().strftime("%m/%d/%Y")
 optionInformation = "Options read from " + OPTIONS_FILE
 
 # look for configuration file and use those settings
+# then load player roster if specified and found
 config = configparser.ConfigParser(defaults=DEFAULT_OPTIONS)
 try:
     with open(OPTIONS_FILE,encoding="utf-8") as optionsFile:
         config.read_file(optionsFile)
+        rosterFile = config.get('DEFAULT',ROSTER_FILE)
+        try:
+            with open(rosterFile,encoding="utf-8") as jsonRosterFile:
+                resolvedScreenNames =  json.load(jsonRosterFile)
+        except IOError:
+            optionInformation += " Could not read rosterFile: " + rosterFile
 except IOError:
     optionInformation = "Could not read " + OPTIONS_FILE + ". Using default values from script."
 
@@ -236,7 +248,8 @@ except IOError:
 # namely, if roster option is used, dump the player roster and go
 # if email option is activated, check for presence of password command line argument
 # if not there prompt for it
-parser = argparse.ArgumentParser(description='Process Poker Mavens log files and deliver transaction info and player balances.')
+parser = argparse.ArgumentParser(description=('Process Poker Mavens log files and deliver transaction info and player balances. v'
+                                              + VERSION))
 parser.add_argument('-c','--csv', action="store_true",dest="doCsv",default=False,help="Output CSV content.")
 parser.add_argument('-e','--email', action="store_true",dest="doEmail",default=False,help="Email player results.")
 parser.add_argument('-g','--glob', action="append",dest="fileglob",
@@ -270,11 +283,7 @@ if (args.roster):
 emailPassword = ''
 if(args.doEmail):
     if (args.password is None):
-<<<<<<< Updated upstream
-        emailPassword = getpass.getpass("Enter the password for the email account (" + FROMADDRESS +"): ")
-=======
         emailPassword = getpass.getpass("Enter the password for the enail account (" + config.get('DEFAULT',FROMADDRESS) +"): ")
->>>>>>> Stashed changes
     else:
         emailPassword = args.password
 
