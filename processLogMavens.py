@@ -50,7 +50,8 @@ import json
 import os
 import re
 import sys
-
+# CC added import of debugger
+# import pdb
 
 from os import path
 from smtplib import SMTP
@@ -80,13 +81,15 @@ DATETIME="datetime"
 NAME="name"
 UNIT="unit"
 EMAIL="email"
+# CC added
+SITE="LuckyDogGames Poker"
 
 # constants around email options
-EMAIL_SUBJ_PREFIX = "Mavens game info from "
-FROMADDRESS = 'me0@mydomain.tld'
-CCADDRESS = 'me@mydomain.tld'
-SMTPSERVER = 'mail.mydomain.tld'
-SMTPPORT = 26
+EMAIL_SUBJ_PREFIX = SITE + " game info from "
+FROMADDRESS = 'cchervitz@gmail.com'
+CCADDRESS = 'cchervitz@gmail.com'
+SMTPSERVER = 'smtp.gmail.com'
+SMTPPORT = 465
 DEBUGLEVEL = 0
 
 
@@ -150,8 +153,9 @@ csvBalanceHeader =  ["Date",
 #               KEY - Poker Mavens screen name
 #               NAME - short name used in player ledger
 #               EMAIL - email address for the player for sending player notes for session
+# CC modded
 resolvedScreenNames = {
-               'MyScreenName':{NAME:'me',EMAIL:"me@mydomain.tld"},
+        'MyScreenName':{NAME:'Chad',EMAIL:"cchervitz@gmail.com"},
                }
 
 # end of data structures
@@ -264,6 +268,12 @@ else:
     # info into the hands dictionary
     # basic hand info is hand number, local hand number, hand time, and table
     # everything else goes into TEXT
+    
+    # CC Added startHands variable
+    # we need to find the first hand to process. sometimes log file has last night's hands first that we
+    # want to skip over until we find the first local start hand. we'll use startHands to control when to
+    # start adding the hands
+    startHands = False
     for filename in filesToProcess:
         f = open(filename, mode='r', encoding='utf-8')
         line = f.readline()
@@ -271,20 +281,32 @@ else:
             matches = re.search("Hand #(\d*)-(\d*) - (.*)$",line)
             if (matches != None):
                 handNumber = matches.group(1)
-                handTime = datetime.datetime.strptime(matches.group(3),"%Y-%m-%d %H:%M:%S")
-                hands[handNumber] = {LOCAL: matches.group(1),
-                                   DATETIME: handTime,
-                                   TEXT: ''}
-                line = f.readline()
-                while (not (line.strip() == '')):
-                    table = re.search("Table: (.*)$",line)
-                    if (table != None):
-                        tableName = table.group(1)
-                        if (not tableName in tables):
-                            tables[tableName] = {COUNT: 0, LATEST: ""}
-                        hands[handNumber][TABLE] = tableName
-                    hands[handNumber][TEXT] = hands[handNumber][TEXT] + line
+                # CC Added next 3 lines
+                localHandNumber = matches.group(2)
+                if localHandNumber == '1':
+                    startHands = True
+                # CC Added if/else condition and else block and indented if block 
+                if startHands == True:
+                    handTime = datetime.datetime.strptime(matches.group(3),"%Y-%m-%d %H:%M:%S")
+                    hands[handNumber] = {LOCAL: matches.group(1),
+                                       DATETIME: handTime,
+                                       TEXT: ''}
                     line = f.readline()
+                    while (not (line.strip() == '')):
+                        table = re.search("Table: (.*)$",line)
+                        if (table != None):
+                            tableName = table.group(1)
+                            if (not tableName in tables):
+                                tables[tableName] = {COUNT: 0, LATEST: ""}
+                            hands[handNumber][TABLE] = tableName
+                        hands[handNumber][TEXT] = hands[handNumber][TEXT] + line
+                        line = f.readline()
+                else:
+                    # just skip to next hand
+                    while True:
+                        line=f.readline()
+                        if (line.strip() == ''):
+                            break
             else:
                 line = f.readline()
         f.close()
@@ -469,7 +491,9 @@ print("")
 if (lastHandTime is not None):
     sessionDate = lastHandTime.strftime("%m/%d/%Y")
 
-note = 'Python calculation of Poker Mavens session'
+# CC add 
+# note = 'Python calculation of Poker Mavens session'
+note = ''
 for player in players.keys():
     # final tally
     cashIn = players[player][IN]
@@ -483,7 +507,7 @@ for player in players.keys():
     players[player][NOTES] = (players[player][NOTES] + "Total OUT " + "{0:.2f}".format(cashOut) + os.linesep)
     if (cashIn == cashOut):
         players[player][NOTES] = (players[player][NOTES] +  player + ' breaks even.' + os.linesep)
-        disposition = "due"
+        disposition = "pay"
     elif (cashIn > cashOut):
         diff = cashIn - cashOut
         netBalance += diff
@@ -493,7 +517,7 @@ for player in players.keys():
         diff = cashOut - cashIn
         netBalance -= diff
         players[player][NOTES] = (players[player][NOTES] +  player + POSITIVE_STATE + "{0:.2f}".format(diff) + os.linesep)
-        disposition = "due"
+        disposition = "pay"
 
     csvBalances.append([sessionDate,disposition,alias,diff,note])
 
@@ -545,7 +569,7 @@ if (args.doEmail):
             to_addr = resolvedScreenNames[player][EMAIL]
             recipients.append(to_addr)
 
-            subj = subj + " for " + player 
+            subj = subj + " for " + player
             message_text = players[player][NOTES]
 
             msg = ("From: %s\nTo: %s\nCC: %s\nSubject: %s\nDate: %s\n\n%s"
