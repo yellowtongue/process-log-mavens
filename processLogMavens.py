@@ -31,6 +31,7 @@
 #
 # assume unique hand number (that is the hand number can NOT repeat across tables)
 # assume that the hand nummber structure NNN-M can be reduced to NNN andt hat the M local part is not needed
+# configurable options can be specified in an INI file specified by a constant OPTIONS_FILE below
 #
 #
 # CHANGE LOG
@@ -39,9 +40,11 @@
 # 2020-05-12 v0.4 bug fixes
 # 2020-05-15 v0.5 added glob work
 # 2020-05-15 v0.6 incorporate suggested fixes for numeric formatting and text matching for names
+# 2020-06-16 v0.7 move commonly changed options to an INI file loaded at run time
 #
 
 import argparse
+import configparser
 import csv
 import datetime
 import glob
@@ -55,14 +58,11 @@ import sys
 from os import path
 from smtplib import SMTP
 
-# constants
-VERSION = "0.5"
-CSVTRANS = "gamelog.csv"
-CSVBALANCE = "balances.csv"
-POSITIVE_STATE = " is up "
-NEGATIVE_STATE = " is down "
-
-
+# script level constants
+# these are constants that are set in this script file and not intended to be edited or changed
+VERSION = "0.7"
+OPTIONS_FILE = "processLogMavens.ini"
+DEBUGLEVEL = 0
 LOCAL = "local"
 INDEX = "index"
 TEXT = "text"
@@ -81,14 +81,40 @@ NAME="name"
 UNIT="unit"
 EMAIL="email"
 
-# constants around email options
-EMAIL_SUBJ_PREFIX = "Mavens game info from "
-FROMADDRESS = 'me0@mydomain.tld'
-CCADDRESS = 'me@mydomain.tld'
-SMTPSERVER = 'mail.mydomain.tld'
-SMTPPORT = 26
-DEBUGLEVEL = 0
+CSV_NOTE="CsvNote"
+CSVTRANS="CsvTransactionsFile"
+CSVBALANCE="CsvBalancesFile"
+EMAIL_SUBJ_PREFIX = "EmailSubjectPrefix"
+FROMADDRESS = 'EmailFromAdress'
+CCADDRESS = 'EmailCcAddress'
+SMTPSERVER = 'EmailSmtpServer'
+SMTPPORT = 'EmailSmtpPort'
+# end script level constants
 
+# configurable constants
+# these are constants that are meant to be configurable - they could be edited here,
+# or specified in a configuration file that is external to this script and cheked for at run time
+# CSV and notes
+POSITIVE_STATE = "PositiveStateWords"
+NEGATIVE_STATE = "NegativeStateWords"
+
+
+DEFAULT_OPTIONS = {
+    CSVBALANCE: "balances.csv",
+    CSVTRANS: "gamelog.csv",
+    CSV_NOTE: 'Python calculation of Poker Mavens session',
+    POSITIVE_STATE: "is up",
+    NEGATIVE_STATE: "is down",
+
+    # constants around email options
+    EMAIL_SUBJ_PREFIX: "Mavens game info from ",
+    FROMADDRESS: 'me0@mydomain.tld',
+    CCADDRESS: 'me@mydomain.tld',
+    SMTPSERVER: 'mail.mydomain.tld',
+    SMTPPORT: '26'
+}
+
+# end configurable constants
 
 ##################################################################################################################
 #
@@ -194,6 +220,16 @@ def isNewPlayer(check, table = None):
 
 lineCount = 0
 sessionDate = datetime.datetime.now().strftime("%m/%d/%Y")
+optionInformation = "Options read from " + OPTIONS_FILE
+
+# look for configuration file and use those settings
+config = configparser.ConfigParser(defaults=DEFAULT_OPTIONS)
+try:
+    with open(OPTIONS_FILE,encoding="utf-8") as optionsFile:
+        config.read_file(optionsFile)
+except IOError:
+    optionInformation = "Could not read " + OPTIONS_FILE + ". Using default values from script."
+
 
 # get and parse command line arguments
 # then process some key ones straight away
@@ -206,7 +242,7 @@ parser.add_argument('-e','--email', action="store_true",dest="doEmail",default=F
 parser.add_argument('-g','--glob', action="append",dest="fileglob",
                     help="Pass a file-matching pattern for pathname expansion. Process each filename matching the expansion.")
 parser.add_argument('-p','--password', action="store",dest="password",
-                    help=("Password for email account (" + FROMADDRESS + ")"))
+                    help=("Password for email account (" + config.get('DEFAULT',FROMADDRESS) + ")"))
 parser.add_argument('-q','--quiet', action="store_true",dest="quiet",default=False,help="Run in quiet mode with minimal output.")
 parser.add_argument('-r','--roster', action="store_true",dest="roster",default=False,
                     help="Show roster of players known to the script and exit.")
@@ -234,7 +270,11 @@ if (args.roster):
 emailPassword = ''
 if(args.doEmail):
     if (args.password is None):
+<<<<<<< Updated upstream
         emailPassword = getpass.getpass("Enter the password for the email account (" + FROMADDRESS +"): ")
+=======
+        emailPassword = getpass.getpass("Enter the password for the enail account (" + config.get('DEFAULT',FROMADDRESS) +"): ")
+>>>>>>> Stashed changes
     else:
         emailPassword = args.password
 
@@ -438,11 +478,12 @@ else:
 
 
 # SUMMARIZE
-# note how many unqiue players
+# note how many unique players
 # note how many hands processed for each table
 # then for each table, and each player, find out who was still listed as not left and mark them
 # as left and what they stood up with
 
+print(optionInformation)
 print("Files: " + str(numFiles))
 print("Players: " + str(len(players)))
 for table in tables:
@@ -469,7 +510,8 @@ print("")
 if (lastHandTime is not None):
     sessionDate = lastHandTime.strftime("%m/%d/%Y")
 
-note = 'Python calculation of Poker Mavens session'
+note = config.get('DEFAULT',CSV_NOTE)
+
 for player in players.keys():
     # final tally
     cashIn = players[player][IN]
@@ -483,17 +525,19 @@ for player in players.keys():
     players[player][NOTES] = (players[player][NOTES] + "Total OUT " + "{0:.2f}".format(cashOut) + os.linesep)
     if (cashIn == cashOut):
         players[player][NOTES] = (players[player][NOTES] +  player + ' breaks even.' + os.linesep)
-        disposition = "due"
+        disposition = config.get('DEFAULT',POSITIVE_STATE)
     elif (cashIn > cashOut):
         diff = cashIn - cashOut
         netBalance += diff
-        players[player][NOTES] = (players[player][NOTES] +  player + NEGATIVE_STATE + "{0:.2f}".format(diff) + os.linesep)
-        disposition = "owes"
+        players[player][NOTES] = (players[player][NOTES] +  player + " " +
+                                  config.get('DEFAULT',NEGATIVE_STATE) + " " + "{0:.2f}".format(diff) + os.linesep)
+        disposition = config.get('DEFAULT',NEGATIVE_STATE)
     elif (cashIn < cashOut):
         diff = cashOut - cashIn
         netBalance -= diff
-        players[player][NOTES] = (players[player][NOTES] +  player + POSITIVE_STATE + "{0:.2f}".format(diff) + os.linesep)
-        disposition = "due"
+        players[player][NOTES] = (players[player][NOTES] +  player + " " +
+                                  config.get('DEFAULT',POSITIVE_STATE) + " " + "{0:.2f}".format(diff) + os.linesep)
+        disposition = config.get('DEFAULT',POSITIVE_STATE)
 
     csvBalances.append([sessionDate,disposition,alias,diff,note])
 
@@ -507,41 +551,46 @@ print("Net balance: " + "{0:.2f}".format(netBalance))
 
 if (args.doCsv):
     # Output CSV file of transactions
-    with open(CSVTRANS, 'w', encoding="utf-8", newline='') as csvfile:
+    with open(config.get('DEFAULT',CSVTRANS), 'w', encoding="utf-8", newline='') as csvfile:
         logwriter = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
         logwriter.writerow(csvHeader)
         for row in csvRows:
             logwriter.writerow(row)
 
         csvfile.close()
-        print("CSV content written to " + CSVTRANS)
+        print("CSV content written to " + config.get('DEFAULT',CSVTRANS))
 
     # Output CSV file of balances
-    with open(CSVBALANCE, 'w', encoding="utf-8", newline='') as csvfile:
+    with open(config.get('DEFAULT',CSVBALANCE), 'w', encoding="utf-8", newline='') as csvfile:
         logwriter = csv.writer(csvfile, quoting=csv.QUOTE_MINIMAL)
         logwriter.writerow(csvBalanceHeader)
         for row in csvBalances:
             logwriter.writerow(row)
 
         csvfile.close()
-        print("CSV balance content written to " + CSVBALANCE)
+        print("CSV balance content written to " + config.get('DEFAULT',CSVBALANCE))
 
 if (args.doEmail):
     smtp = SMTP()
 
+    cc_addr = config.get('DEFAULT',CCADDRESS)
+    from_addr = config.get('DEFAULT',FROMADDRESS)
+
     smtp.set_debuglevel(DEBUGLEVEL)
-    smtp.connect(SMTPSERVER, SMTPPORT)
-    smtp.login(FROMADDRESS, emailPassword)
+    smtp.connect(config.get('DEFAULT',SMTPSERVER), config.getint('DEFAULT',SMTPPORT))
+    smtp.login(from_addr, emailPassword)
     #TODO: error handling for a failed login to SMTP server
+
 
     date = datetime.datetime.now().strftime("%a, %d %b %Y %T %z (%Z)")
     emailCount = 0
 
+
     for player in players:
-        subj = EMAIL_SUBJ_PREFIX + sessionDate
+        subj = config.get('DEFAULT',EMAIL_SUBJ_PREFIX) + " " + sessionDate
         if (player in resolvedScreenNames and EMAIL in resolvedScreenNames[player]):
             emailCount += 1
-            recipients = [CCADDRESS]
+            recipients = [cc_addr]
             to_addr = resolvedScreenNames[player][EMAIL]
             recipients.append(to_addr)
 
@@ -549,8 +598,8 @@ if (args.doEmail):
             message_text = players[player][NOTES]
 
             msg = ("From: %s\nTo: %s\nCC: %s\nSubject: %s\nDate: %s\n\n%s"
-                   % (FROMADDRESS, to_addr, CCADDRESS, subj, date, message_text))
+                   % (from_addr, to_addr, cc_addr, subj, date, message_text))
 
-            smtp.sendmail(FROMADDRESS, recipients, msg.encode("utf-8"))
+            smtp.sendmail(from_addr, recipients, msg.encode("utf-8"))
     smtp.quit()
     print("Email messages sent: " + str(emailCount))
