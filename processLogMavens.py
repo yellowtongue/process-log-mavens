@@ -234,7 +234,7 @@ if (args.roster):
 emailPassword = ''
 if(args.doEmail):
     if (args.password is None):
-        emailPassword = getpass.getpass("Enter the password for the enail account (" + FROMADDRESS +"): ")
+        emailPassword = getpass.getpass("Enter the password for the email account (" + FROMADDRESS +"): ")
     else:
         emailPassword = args.password
 
