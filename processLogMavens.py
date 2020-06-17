@@ -41,6 +41,7 @@
 # 2020-05-15 v0.5 added glob work
 # 2020-05-15 v0.6 incorporate suggested fixes for numeric formatting and text matching for names
 # 2020-06-16 v0.7 move commonly changed options to an INI file loaded at run time
+# 2020-06-17 v0.7.1 also support plain text export of emails with names from Mavens
 #
 
 import argparse
@@ -60,7 +61,7 @@ from smtplib import SMTP
 
 # script level constants
 # these are constants that are set in this script file and not intended to be edited or changed
-VERSION = "0.7"
+VERSION = "0.7.1"
 OPTIONS_FILE = "processLogMavens.ini"
 DEBUGLEVEL = 0
 LOCAL = "local"
