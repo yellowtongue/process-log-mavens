@@ -93,6 +93,7 @@ SMTPPORT = 'EmailSmtpPort'
 POSITIVE_STATE = "PositiveStateWords"
 NEGATIVE_STATE = "NegativeStateWords"
 ROSTER_FILE =  "RosterFile"
+EMAIL_EXPORT_FILE = "EmailExportFile"
 # end script level constants
 
 # configurable constants
@@ -229,6 +230,11 @@ optionInformation = "Options read from " + OPTIONS_FILE
 
 # look for configuration file and use those settings
 # then load player roster if specified and found
+# finally if there is an EmailExportFile specified, open that,
+# parse each line, and either update or create a resolvedScreenName dictionary entry using
+# the combination of ScreenName and email on each line of that file
+# the export fiel format is that which Mavens produces from the
+# Accounts tab "Export > Emails With Names" option
 config = configparser.ConfigParser(defaults=DEFAULT_OPTIONS)
 try:
     with open(OPTIONS_FILE,encoding="utf-8") as optionsFile:
@@ -239,6 +245,25 @@ try:
                 resolvedScreenNames =  json.load(jsonRosterFile)
         except IOError:
             optionInformation += " Could not read rosterFile: " + rosterFile
+        if (config.has_option('DEFAULT', EMAIL_EXPORT_FILE)):
+            emailExportFile = config.get('DEFAULT', EMAIL_EXPORT_FILE)
+            try:
+                with open(emailExportFile,encoding="utf-8") as emailListHandler:
+                    for line in emailListHandler:
+                        matches = re.search("([\w-]+) <([^>]+)>", line)
+                        if (matches != None):
+                            screenName = matches.group(1)
+                            email = matches.group(2)
+                            if (screenName in resolvedScreenNames):
+                                resolvedScreenNames[screenName][EMAIL] = email
+                            else:
+                                resolvedScreenNames[screenName] = {EMAIL: email}
+
+            except IOError:
+                optionInformation += "\nEmail text file specified but unable to open " + emailExportFile
+
+
+
 except IOError:
     optionInformation = "Could not read " + OPTIONS_FILE + ". Using default values from script."
 
@@ -269,12 +294,15 @@ if (args.roster):
         print("Roster of Players: " + str(len(resolvedScreenNames)))
         print("")
     for player in sorted(resolvedScreenNames.keys(), key=str.casefold):
+        name = ''
+        if (NAME in resolvedScreenNames[player]):
+            name = resolvedScreenNames[player][NAME]
         if (args.doCsv):
-            text = (player + "," + resolvedScreenNames[player][NAME] + ",")
+            text = (player + "," + name + ",")
             if (EMAIL in resolvedScreenNames[player]):
                 text = text + resolvedScreenNames[player][EMAIL]
         else:
-            text = (player + " (" + resolvedScreenNames[player][NAME] + ")")
+            text = (player + " (" + name + ")")
             if (EMAIL in resolvedScreenNames[player]):
                 text = text + " - " + resolvedScreenNames[player][EMAIL]
         print (text)
@@ -528,7 +556,7 @@ for player in players.keys():
     disposition=''
     diff = 0
     alias = player
-    if (player in resolvedScreenNames):
+    if (player in resolvedScreenNames and NAME in resolvedScreenNames[player]):
         alias = resolvedScreenNames[player][NAME]
     players[player][NOTES] = (players[player][NOTES] + "Total IN " + "{0:.2f}".format(cashIn) + os.linesep)
     players[player][NOTES] = (players[player][NOTES] + "Total OUT " + "{0:.2f}".format(cashOut) + os.linesep)
