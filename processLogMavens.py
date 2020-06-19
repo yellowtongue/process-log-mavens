@@ -54,7 +54,8 @@ import json
 import os
 import re
 import sys
-
+# CC added import of debugger
+# import pdb
 
 from os import path
 from smtplib import SMTP
@@ -81,6 +82,8 @@ DATETIME="datetime"
 NAME="name"
 UNIT="unit"
 EMAIL="email"
+# CC added
+SITE="LuckyDogGames Poker"
 
 # constants for processing INI and setting configurable defaults
 CSV_NOTE="CsvNote"
@@ -234,7 +237,7 @@ optionInformation = "Options read from " + OPTIONS_FILE
 # finally if there is an EmailExportFile specified, open that,
 # parse each line, and either update or create a resolvedScreenName dictionary entry using
 # the combination of ScreenName and email on each line of that file
-# the export fiel format is that which Mavens produces from the
+# the export file format is that which Mavens produces from the
 # Accounts tab "Export > Emails With Names" option
 config = configparser.ConfigParser(defaults=DEFAULT_OPTIONS)
 try:
@@ -286,6 +289,10 @@ parser.add_argument('-q','--quiet', action="store_true",dest="quiet",default=Fal
 parser.add_argument('-r','--roster', action="store_true",dest="roster",default=False,
                     help="Show roster of players known to the script and exit.")
 parser.add_argument('file', type=argparse.FileType('r'), nargs='*',help="plain text files of Poker Mavens hand histories to process.")
+# CC Added skip argument to allow user to skip over prior day's hands in first log file. default is NOT to skip anything
+# so start counting hands immediately (same output as before without this option)
+parser.add_argument('-s','--skipPriorHands', action="store_true",dest="skipPriorHands",default=False,
+                    help="Ignore all hands in the first file passed in to process if it contains hands from the night before (i.e., all hands before local hand is reset to #1)")
 args = parser.parse_args()
 
 if (args.roster):
@@ -312,12 +319,11 @@ if (args.roster):
 emailPassword = ''
 if(args.doEmail):
     if (args.password is None):
-        emailPassword = getpass.getpass("Enter the password for the enail account (" + config.get('DEFAULT',FROMADDRESS) +"): ")
+        emailPassword = getpass.getpass("Enter the password for the email account (" + config.get('DEFAULT',FROMADDRESS) +"): ")
     else:
         emailPassword = args.password
 
 lastHandTime = datetime.datetime.now()
-
 
 # get the files to process
 # they either came in from the command line as individual file name arguments passed to args.file
@@ -342,6 +348,13 @@ else:
     # info into the hands dictionary
     # basic hand info is hand number, local hand number, hand time, and table
     # everything else goes into TEXT
+    
+    # CC Added startHands variable to track when to start adding hands
+    # we need to find the first hand to start to process. if the user told us to ignore the prior day, 
+    # then we will skip over the first hands until the local hand number is reset to 1. 
+    # we'll use the startHands variable to control when to actually start adding the hands
+    startHands = not args.skipPriorHands
+    
     for filename in filesToProcess:
         f = open(filename, mode='r', encoding='utf-8')
         line = f.readline()
@@ -349,20 +362,35 @@ else:
             matches = re.search("Hand #(\d*)-(\d*) - (.*)$",line)
             if (matches != None):
                 handNumber = matches.group(1)
-                handTime = datetime.datetime.strptime(matches.group(3),"%Y-%m-%d %H:%M:%S")
-                hands[handNumber] = {LOCAL: matches.group(1),
-                                   DATETIME: handTime,
-                                   TEXT: ''}
-                line = f.readline()
-                while (not (line.strip() == '')):
-                    table = re.search("Table: (.*)$",line)
-                    if (table != None):
-                        tableName = table.group(1)
-                        if (not tableName in tables):
-                            tables[tableName] = {COUNT: 0, LATEST: ""}
-                        hands[handNumber][TABLE] = tableName
-                    hands[handNumber][TEXT] = hands[handNumber][TEXT] + line
+                # CC Added next 3 lines
+                # get the local hand number. if it's set/reset to 1, then start adding the hands
+                localHandNumber = matches.group(2)
+                if localHandNumber == '1':
+                    startHands = True
+                # CC Added if/else condition and else block and indented if block 
+                # only add the hand if we are starting to count the hands
+                if startHands == True:
+                    handTime = datetime.datetime.strptime(matches.group(3),"%Y-%m-%d %H:%M:%S")
+                    hands[handNumber] = {LOCAL: matches.group(1),
+                                       DATETIME: handTime,
+                                       TEXT: ''}
                     line = f.readline()
+                    while (not (line.strip() == '')):
+                        table = re.search("Table: (.*)$",line)
+                        if (table != None):
+                            tableName = table.group(1)
+                            if (not tableName in tables):
+                                tables[tableName] = {COUNT: 0, LATEST: ""}
+                            hands[handNumber][TABLE] = tableName
+                        hands[handNumber][TEXT] = hands[handNumber][TEXT] + line
+                        line = f.readline()
+                else:
+                    # CC added
+                    # otherwise, just skip to finding the next hand to process
+                    while True:
+                        line=f.readline()
+                        if (line.strip() == ''):
+                            break
             else:
                 line = f.readline()
         f.close()
