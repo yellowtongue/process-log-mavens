@@ -291,7 +291,7 @@ parser.add_argument('-r','--roster', action="store_true",dest="roster",default=F
 parser.add_argument('file', type=argparse.FileType('r'), nargs='*',help="plain text files of Poker Mavens hand histories to process.")
 # CC Added skip argument to allow user to skip over prior day's hands in first log file. default is NOT to skip anything
 # so start counting hands immediately (same output as before without this option)
-parser.add_argument('-s','--skipPriorHands', action="store_true",dest="skipPriorHands",default=False,
+parser.add_argument('-s','--skip-prior-hands', action="store_true",dest="skipPriorHands",default=False,
                     help="Ignore all hands in the first file passed in to process if it contains hands from the night before (i.e., all hands before local hand is reset to #1)")
 args = parser.parse_args()
 
