@@ -582,7 +582,7 @@ for table in tables:
             players[player][NOTES] = (players[player][NOTES] + str(tables[table][LAST]) + " table " + table +
                                       " hand (" + tables[table][LAST] + ") " +
                                       "ended table with " + "{0:.2f}".format(amount) + os.linesep)
-            csvRows.append([tables[table][LAST],table,tables[table][LAST],player,"ended table with","",amount])
+            csvRows.append([tables[table][LATEST],table,tables[table][LAST],player,"ended table with","",amount])
 
 netBalance = 0
 
