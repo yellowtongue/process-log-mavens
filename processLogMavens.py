@@ -579,7 +579,7 @@ for table in tables:
             players[player][table][OUT] += amount
             players[player][table][LATEST] = 0
             players[player][table][LEFT] = True
-            players[player][NOTES] = (players[player][NOTES] + str(tables[table][LAST]) + " table " + table +
+            players[player][NOTES] = (players[player][NOTES] + str(tables[table][LATEST]) + " table " + table +
                                       " hand (" + tables[table][LAST] + ") " +
                                       "ended table with " + "{0:.2f}".format(amount) + os.linesep)
             csvRows.append([tables[table][LATEST],table,tables[table][LAST],player,"ended table with","",amount])
