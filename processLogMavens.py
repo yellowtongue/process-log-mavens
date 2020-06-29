@@ -42,6 +42,7 @@
 # 2020-05-15 v0.6 incorporate suggested fixes for numeric formatting and text matching for names
 # 2020-06-16 v0.7 move commonly changed options to an INI file loaded at run time
 # 2020-06-17 v0.7.1 also support plain text export of emails with names from Mavens
+# 2020-06-29 v0.7.2 change  skip prior option behavior to process multiple tables, files in any order
 #
 
 import argparse
@@ -62,7 +63,7 @@ from smtplib import SMTP
 
 # script level constants
 # these are constants that are set in this script file and not intended to be edited or changed
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 OPTIONS_FILE = "processLogMavens.ini"
 DEBUGLEVEL = 0
 LOCAL = "local"
@@ -82,8 +83,9 @@ DATETIME="datetime"
 NAME="name"
 UNIT="unit"
 EMAIL="email"
-# CC added
-SITE="LuckyDogGames Poker"
+EARLIEST="earliest"
+STARTHANDS="start hands"
+SKIPPED="skipped"
 
 # constants for processing INI and setting configurable defaults
 CSV_NOTE="CsvNote"
@@ -155,6 +157,9 @@ tables = {}   # the tables dictionary
               # structure
               # KEY - string - table name as found in log
               # COUNT - integer - number of hands processed for table
+              # SKIPPED - integer - number of hands skipped (if skip prior hands option in use)
+              # STARTHANDS - Boolean flag to indicate if hands are being processed (True unless skip prior hands in use)
+              # EARLIEST - datetime - the earliest time stamp for a hand processed for this table
               # LATEST - datetime - the latest time stamp for a hand processed for this table
               # LAST - string - hand number for the latest hand processed for this table
               #        LAST and LATEST are used to mark the "end" activity of players standing up
@@ -292,7 +297,7 @@ parser.add_argument('file', type=argparse.FileType('r'), nargs='*',help="plain t
 # CC Added skip argument to allow user to skip over prior day's hands in first log file. default is NOT to skip anything
 # so start counting hands immediately (same output as before without this option)
 parser.add_argument('-s','--skip-prior-hands', action="store_true",dest="skipPriorHands",default=False,
-                    help="Ignore all hands in the first file passed in to process if it contains hands from the night before (i.e., all hands before local hand is reset to #1)")
+                    help="Skip hands for tables until local hand count reads number one. Intended to find overnight session divide.")
 args = parser.parse_args()
 
 if (args.roster):
@@ -349,50 +354,40 @@ else:
     # basic hand info is hand number, local hand number, hand time, and table
     # everything else goes into TEXT
     
-    # CC Added startHands variable to track when to start adding hands
-    # we need to find the first hand to start to process. if the user told us to ignore the prior day, 
-    # then we will skip over the first hands until the local hand number is reset to 1. 
-    # we'll use the startHands variable to control when to actually start adding the hands
+    # Added startHands variable to track when to start adding hands
+    # mark each table with startHands
+    # if skipPriorHands is true, then startHands will be false
+    # otherwise this is going to be true
+    # this is then used int eh next loop to determine when to start processing hands
     startHands = not args.skipPriorHands
     
     for filename in filesToProcess:
         f = open(filename, mode='r', encoding='utf-8')
+        handNumber = None
+        handTime = None
         line = f.readline()
         while (len(line) != 0):
             matches = re.search("Hand #(\d*)-(\d*) - (.*)$",line)
             if (matches != None):
                 handNumber = matches.group(1)
-                # CC Added next 3 lines
-                # get the local hand number. if it's set/reset to 1, then start adding the hands
                 localHandNumber = matches.group(2)
-                if localHandNumber == '1':
-                    startHands = True
-                # CC Added if/else condition and else block and indented if block 
-                # only add the hand if we are starting to count the hands
-                if startHands == True:
-                    handTime = datetime.datetime.strptime(matches.group(3),"%Y-%m-%d %H:%M:%S")
-                    hands[handNumber] = {LOCAL: matches.group(1),
-                                       DATETIME: handTime,
-                                       TEXT: ''}
-                    line = f.readline()
-                    while (not (line.strip() == '')):
-                        table = re.search("Table: (.*)$",line)
-                        if (table != None):
-                            tableName = table.group(1)
-                            if (not tableName in tables):
-                                tables[tableName] = {COUNT: 0, LATEST: ""}
-                            hands[handNumber][TABLE] = tableName
-                        hands[handNumber][TEXT] = hands[handNumber][TEXT] + line
-                        line = f.readline()
-                else:
-                    # CC added
-                    # otherwise, just skip to finding the next hand to process
-                    while True:
-                        line=f.readline()
-                        if (line.strip() == ''):
-                            break
-            else:
-                line = f.readline()
+                handTime = datetime.datetime.strptime(matches.group(3),"%Y-%m-%d %H:%M:%S")
+                hands[handNumber] = {LOCAL: localHandNumber,
+                                   DATETIME: handTime,
+                                   TEXT: ''}
+            elif (handNumber is not None):
+                table = re.search("Table: (.*)$", line)
+                if (table != None):
+                    tableName = table.group(1)
+                    if (not tableName in tables):
+                        tables[tableName] = {COUNT: 0,
+                                             EARLIEST: None,
+                                             LAST: "",
+                                             STARTHANDS: startHands,
+                                             SKIPPED: 0}
+                    hands[handNumber][TABLE] = tableName
+                hands[handNumber][TEXT] = hands[handNumber][TEXT] + line
+            line = f.readline()
         f.close()
 
     handNumber = ""
@@ -401,14 +396,31 @@ else:
     # now that we have all hands from all the files,
     # use the timestamps of the imported hands to process them in chronological order
     # this is the place for processing the text of each hand and look for player actions
+    # we need to find the first hand to start to process. if the user told us to ignore the prior day,
+    # then we will skip over the first hands until the local hand number is reset to 1.
+    # we'll use the startTable variable to control when to actually start adding the hands
+    # and that is possibly different for each table, so we need to look it up for the table for this hand
     for handNumber in sorted(hands.keys(), key=lambda hand: hands[hand][DATETIME] ):
         # print(handNumber) #DEBUG
         handTime = hands[handNumber][DATETIME]
         table = hands[handNumber][TABLE]
+        localHandNumber = hands[handNumber][LOCAL]
+        startTable = tables[table][STARTHANDS]
+
+        if (not startTable):
+            if (localHandNumber != "1"):
+                tables[table][SKIPPED] += 1
+                continue
+            else:
+                tables[table][EARLIEST] = handTime
+                tables[table][STARTHANDS] = True
+
         tables[table][COUNT] += 1
-        tables[table][LATEST] = handNumber
-        tables[table][LAST] = handTime
+        tables[table][LAST] = handNumber
+        tables[table][LATEST] = handTime
         lastHandTime = handTime
+        if (tables[table][EARLIEST] is None):
+            tables[table][EARLIEST] = handTime
         # print(handTime) # DEBUG
 
         for line in hands[handNumber][TEXT].splitlines():
@@ -554,6 +566,10 @@ print("Files: " + str(numFiles))
 print("Players: " + str(len(players)))
 for table in tables:
     print("Table " + table + ": Processed hands: " + str(tables[table][COUNT]))
+    print("      " + table + ": Earliest hand: " + str(tables[table][EARLIEST]))
+    print("      " + table + ": Latest hand: " + str(tables[table][LATEST]))
+    if (args.skipPriorHands):
+        print("      " + table + ": Skipped hands: " + str(tables[table][SKIPPED]))
 
     for player in players.keys():
         # done processing the hands, so get players up from the table
@@ -564,9 +580,9 @@ for table in tables:
             players[player][table][LATEST] = 0
             players[player][table][LEFT] = True
             players[player][NOTES] = (players[player][NOTES] + str(tables[table][LAST]) + " table " + table +
-                                      " hand (" + tables[table][LATEST] + ") " +
+                                      " hand (" + tables[table][LAST] + ") " +
                                       "ended table with " + "{0:.2f}".format(amount) + os.linesep)
-            csvRows.append([tables[table][LAST],table,tables[table][LATEST],player,"ended table with","",amount])
+            csvRows.append([tables[table][LATEST],table,tables[table][LAST],player,"ended table with","",amount])
 
 netBalance = 0
 
