@@ -30,7 +30,7 @@
 # KEY ASSUMPTIONS
 #
 # assume unique hand number (that is the hand number can NOT repeat across tables)
-# assume that the hand nummber structure NNN-M can be reduced to NNN andt hat the M local part is not needed
+# assume that the hand number structure NNN-M can be reduced to NNN andt hat the M local part is not needed
 # configurable options can be specified in an INI file specified by a constant OPTIONS_FILE below
 #
 #
@@ -42,6 +42,7 @@
 # 2020-05-15 v0.6 incorporate suggested fixes for numeric formatting and text matching for names
 # 2020-06-16 v0.7 move commonly changed options to an INI file loaded at run time
 # 2020-06-17 v0.7.1 also support plain text export of emails with names from Mavens
+# 2020-12-21 v0.8 initial support for processing tournament result files
 #
 
 import argparse
@@ -62,7 +63,7 @@ from smtplib import SMTP
 
 # script level constants
 # these are constants that are set in this script file and not intended to be edited or changed
-VERSION = "0.7.1"
+VERSION = "0.8"
 OPTIONS_FILE = "processLogMavens.ini"
 DEBUGLEVEL = 0
 LOCAL = "local"
@@ -219,9 +220,118 @@ def isNewPlayer(check, table = None):
     elif (not check in players):
         isNew = True
         players[check] = {IN: 0, OUT: 0, NOTES: ""}
-        players[player][NOTES] = ("Player Notes for " + player + os.linesep)
+        players[check][NOTES] = ("Player Notes for " + check + os.linesep)
 
     return isNew
+
+# processTournament works with a Tournament Results file as produced by PokerMavens
+# it willFirst check to see if these are Tournament Results by looking at the first line in the file, and if not,
+# will return a value of False
+# otherwise will process as a Tournament and return a value of True
+# It will step through, count entry fee, sum up
+#TODO: understand wnd work with bonus amounts
+#TODO: understand and work with ticketed entries
+#TODO: understand and work with ticket prizes
+def processTournament(trFile):
+    isTourney = False
+    parameters = {}
+    name = ""
+    buyIn = 0
+    rebuy = 0
+    bounty = 0
+    runners = 0
+    rebuys = 0
+    bounties = {}
+    header = trFile.readline()
+    matches = re.search("Tournament=(.*)$", header)
+    if (matches == None):
+        return isTourney
+    else:
+        name=matches.group(1)
+        line = trFile.readline()
+        isTourney = True
+
+        # grab the rest of the lines of the file as name-value parameters and
+        # put int he parameters dictionary
+        while (len(line) != 0):
+            info = line.strip().split("=",1)
+            if (len(info) > 1):
+                parameters[info[0]] = info[1]
+            line = trFile.readline()
+
+        tourneyTime = parameters["Start"]
+        amounts = parameters["BuyIn"].split("+",1)
+        buyIn = float(amounts[0]) + float(amounts[1])
+        amounts = parameters["RebuyCost"].split("+",1)
+        rebuy = float(amounts[0]) + float(amounts[1])
+        bounty  = float(parameters["Bounty"])
+
+        # next run through parameters and find place of runners, winnings, number of rebuys
+        # and build up bounties dictionary
+        for p in parameters:
+            matches=re.search("^Place(\d+)", p)
+            if (matches != None):
+                place = matches.group(1)
+                runnerInfo = parameters[p]
+                matches=re.search("(?P<runner>[^(]*) \((?P<win>[0-9.]+)(\+\d+)?\) (Rebuys:(?P<num_rebuy>\d+) )?KO:(?P<ko>.*)$", runnerInfo)
+                if (matches != None):
+                    runner = matches.group('runner')
+                    winString =  matches.group('win')
+                    numRebuys = 0
+                    try:
+                        numRebuys = int(matches.group('num_rebuy'))
+                    except Exception as ex:
+                        numRebuys = 0
+                    ko = matches.group('ko')
+                    print(ko)
+                    if (not ko in bounties):
+                        bounties[ko] = []
+
+                    bounties[ko].append(runner)
+
+                    # Now go ahead and list basic info we know about the tournament in the
+                    # players dictionary
+                    isNewPlayer(check=runner)
+                    players[runner][IN] += buyIn
+                    players[runner][NOTES] += (tourneyTime +
+                                               " tournament " + name +
+                                               " buy in " + str(buyIn) + os.linesep)
+                    csvRows.append([tourneyTime,name,'',runner,"buy in",buyIn,""])
+
+                    if (numRebuys > 0):
+                        players[runner][IN] += (numRebuys * rebuy)
+                        players[runner][NOTES] += (tourneyTime +
+                                                   " tournament " + name +
+                                                   " rebuys " + str(numRebuys * rebuy ) + os.linesep)
+                        csvRows.append([tourneyTime,name,'',runner,"rebuy",(numRebuys*rebuy),""])
+
+                    # register any winnings
+                    winAmount = 0
+                    winAmount = float(winString)
+                    if (winAmount > 0):
+                        players[runner][OUT] += winAmount
+                        players[runner][NOTES] += (tourneyTime +
+                                                   " tournament " + name +
+                                                   " cashes in place " + place + " for " + winString + os.linesep)
+                        csvRows.append([tourneyTime,name,'',runner,"cash","",winAmount])
+
+        if (bounty > 0):
+            for player in bounties:
+                isNewPlayer(check=player)
+                takenList = ",".join(bounties[player])
+                takenNumber = len(bounties[player])
+                bountyPrize = bounty * takenNumber
+                players[player][OUT] += bountyPrize
+                players[player][NOTES] += (tourneyTime +
+                                           " tournament " + name +
+                                           " took bounty for " + str(takenNumber) +
+                                           " (" + takenList + ")" +
+                                           " worth " + str(bountyPrize) + os.linesep)
+                csvRows.append([tourneyTime, name, '', player, "bounty", "", bountyPrize])
+
+        print("Processed tournament " + name + " runners: " + parameters["Entrants"])
+        return isTourney
+# end of processTournament function
 
 
 # end of functions
@@ -344,6 +454,8 @@ if (numFiles == 0):
     print("Must provide a name of a log file to process.")
 else:
     # process each file listed on the command line
+    # initially try to process as a tournament result file
+    # if not, then go ahead and start parsing hands
     # first loop through is just to parse and get each hand separated, and get basic hand
     # info into the hands dictionary
     # basic hand info is hand number, local hand number, hand time, and table
@@ -357,6 +469,19 @@ else:
     
     for filename in filesToProcess:
         f = open(filename, mode='r', encoding='utf-8')
+
+        # check if file represents tournament results as listed by PokerMavens
+        # if so the function will process and return true, so close file handle and
+        # move to next file
+        # if not, reset the pointer and carry on
+        isTournament = processTournament(f)
+        if (isTournament):
+            f.close()
+            continue
+        else:
+            f.seek(0)
+
+
         line = f.readline()
         while (len(line) != 0):
             matches = re.search("Hand #(\d*)-(\d*) - (.*)$",line)
