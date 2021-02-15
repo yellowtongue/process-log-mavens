@@ -501,7 +501,7 @@ else:
                                    DATETIME: handTime,
                                    TEXT: ''}
             elif (handNumber is not None):
-                table = re.search("Table: (.*)$", line)
+                table = re.search("^Table: (.*)$", line)
                 if (table != None):
                     tableName = table.group(1)
                     if (not tableName in tables):
