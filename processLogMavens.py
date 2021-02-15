@@ -44,6 +44,7 @@
 # 2020-06-17 v0.7.1 also support plain text export of emails with names from Mavens
 # 2020-06-29 v0.7.2 change  skip prior option behavior to process multiple tables, files in any order
 # 2020-12-21 v0.8 initial support for processing tournament result files
+# 2021-02-15 v0.8.1 processing tournament result files now allows for multiple results set in same file
 #
 
 import argparse
@@ -64,7 +65,7 @@ from smtplib import SMTP
 
 # script level constants
 # these are constants that are set in this script file and not intended to be edited or changed
-VERSION = "0.8"
+VERSION = "0.8.1"
 OPTIONS_FILE = "processLogMavens.ini"
 DEBUGLEVEL = 0
 LOCAL = "local"
