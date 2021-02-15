@@ -232,7 +232,7 @@ def isNewPlayer(check, table = None):
 # processTournament works with a Tournament Results file as produced by PokerMavens
 # it willFirst check to see if these are Tournament Results by looking at the first line in the file, and if not,
 # will return a value of False
-# otherwise will process as a Tournament and return a value of True
+# otherwise will process as a Tournament or series of Tournament results and return a value of True
 # It will step through, count entry fee, sum up
 #TODO: understand wnd work with bonus amounts
 #TODO: understand and work with ticketed entries
@@ -247,94 +247,140 @@ def processTournament(trFile):
     runners = 0
     rebuys = 0
     bounties = {}
+    ticketIn = []
+    ticketOut = {}
     header = trFile.readline()
     matches = re.search("Tournament=(.*)$", header)
     if (matches == None):
         return isTourney
     else:
-        name=matches.group(1)
-        line = trFile.readline()
         isTourney = True
+        trFile.seek(0)
 
         # grab the rest of the lines of the file as name-value parameters and
-        # put int he parameters dictionary
-        while (len(line) != 0):
-            info = line.strip().split("=",1)
-            if (len(info) > 1):
-                parameters[info[0]] = info[1]
-            line = trFile.readline()
-
-        tourneyTime = parameters["Start"]
-        amounts = parameters["BuyIn"].split("+",1)
-        buyIn = float(amounts[0]) + float(amounts[1])
-        amounts = parameters["RebuyCost"].split("+",1)
-        rebuy = float(amounts[0]) + float(amounts[1])
-        bounty  = float(parameters["Bounty"])
-
-        # next run through parameters and find place of runners, winnings, number of rebuys
-        # and build up bounties dictionary
-        for p in parameters:
-            matches=re.search("^Place(\d+)", p)
-            if (matches != None):
-                place = matches.group(1)
-                runnerInfo = parameters[p]
-                matches=re.search("(?P<runner>[^(]*) \((?P<win>[0-9.]+)(\+\d+)?\) (Rebuys:(?P<num_rebuy>\d+) )?KO:(?P<ko>.*)$", runnerInfo)
+        # put in the parameters dictionary
+        # if blank, process the lines and clear the parameters
+        # otherwise just add them to the listing
+        for line in trFile:
+            if (len(line) != 1):
+                matches = re.search("(\w+)=(.*)$", line.strip())
                 if (matches != None):
-                    runner = matches.group('runner')
-                    winString =  matches.group('win')
-                    numRebuys = 0
-                    try:
-                        numRebuys = int(matches.group('num_rebuy'))
-                    except Exception as ex:
-                        numRebuys = 0
-                    ko = matches.group('ko')
-                    print(ko)
-                    if (not ko in bounties):
-                        bounties[ko] = []
+                    parameters[matches.group(1)] = matches.group(2)
+            else:
+                # run through various parameters and establish tournament info
+                # to use when resolving runner results
+                name = parameters["Tournament"]
+                tourneyTime = parameters["Start"]
+                amounts = parameters["BuyIn"].split("+", 1)
+                buyIn = float(amounts[0]) + float(amounts[1])
+                amounts = parameters["RebuyCost"].split("+", 1)
+                rebuy = float(amounts[0]) + float(amounts[1])
+                bounty = float(parameters["Bounty"])
+                # note - the TicketIn parameter is synthetic and must be manually added to
+                # the TR file
+                # expected format is that the value is comma separated list of runners
+                # who used a ticket rather than paid a fee to enter the tournament
+                if ("TicketIn" in parameters):
+                    ticketIn = parameters["TicketIn"].split(",")
 
-                    bounties[ko].append(runner)
+                # next run through parameters and find place of runners, winnings, number of rebuys
+                # (runner results)
+                # and build up bounties dictionary
+                for p in parameters:
+                    matches = re.search("^Place(\d+)", p)
+                    if (matches != None):
+                        place = matches.group(1)
+                        runnerInfo = parameters[p]
+                        matches = re.search(
+                            "(?P<runner>[^(]*) \((?P<win>[0-9.]+)(\+\d+)?\)(?P<ticket>\(\w+\))? (Rebuys:(?P<num_rebuy>\d+) )?KO:(?P<ko>.*)$",
+                            runnerInfo)
+                        if (matches != None):
+                            runner = matches.group('runner')
+                            winString = matches.group('win')
+                            numRebuys = 0
+                            try:
+                                numRebuys = int(matches.group('num_rebuy'))
+                            except Exception as ex:
+                                numRebuys = 0
+                            ko = matches.group('ko')
+                            if (not ko in bounties):
+                                bounties[ko] = []
 
-                    # Now go ahead and list basic info we know about the tournament in the
-                    # players dictionary
-                    isNewPlayer(check=runner)
-                    players[runner][IN] += buyIn
-                    players[runner][NOTES] += (tourneyTime +
-                                               " tournament " + name +
-                                               " buy in " + str(buyIn) + os.linesep)
-                    csvRows.append([tourneyTime,name,'',runner,"buy in",buyIn,""])
+                            bounties[ko].append(runner)
+                            # record any tickets issued as prizes
+                            if (matches.group('ticket')):
+                                ticketOut[runner] = matches.group('ticket')
 
-                    if (numRebuys > 0):
-                        players[runner][IN] += (numRebuys * rebuy)
-                        players[runner][NOTES] += (tourneyTime +
+                            # Now go ahead and list basic info we know about the tournament in the
+                            # players dictionary
+                            isNewPlayer(check=runner)
+                            if runner in ticketIn:
+                                players[runner][NOTES] += (tourneyTime +
+                                                           " tournament " + name +
+                                                           " entered via ticket " + os.linesep)
+                            else:
+                                players[runner][IN] += buyIn
+                                players[runner][NOTES] += (tourneyTime +
+                                                           " tournament " + name +
+                                                           " buy in " + str(buyIn) + os.linesep)
+                                csvRows.append([tourneyTime, name, '', runner, "buy in", buyIn, ""])
+
+                            if (numRebuys > 0):
+                                players[runner][IN] += (numRebuys * rebuy)
+                                players[runner][NOTES] += (tourneyTime +
+                                                           " tournament " + name +
+                                                           " rebuys " + str(numRebuys * rebuy) + os.linesep)
+                                csvRows.append([tourneyTime, name, '', runner, "rebuy", (numRebuys * rebuy), ""])
+
+                            # register any winnings
+                            # if ticket awarded, note the value
+                            # but do not award winnings
+                            # TODO: there may be a better way to do this that allows for bonus ticket win
+                            winAmount = 0
+                            winAmount = float(winString)
+                            if (winAmount > 0):
+                                if (runner in ticketOut):
+                                    players[runner][NOTES] += (tourneyTime +
+                                                               " tournament " + name +
+                                                               " wins ticket " + ticketOut[runner] +
+                                                               " in place #" + place + " worth " + winString + os.linesep)
+                                    csvRows.append([tourneyTime, name, '', runner, "cash", "", 0])
+                                else:
+                                    players[runner][OUT] += winAmount
+                                    players[runner][NOTES] += (tourneyTime +
+                                                               " tournament " + name +
+                                                               " cashes in place #" + place + " for " + winString + os.linesep)
+                                    csvRows.append([tourneyTime, name, '', runner, "cash", "", winAmount])
+
+                if (bounty > 0):
+                    for player in bounties:
+                        isNewPlayer(check=player)
+                        takenList = ",".join(bounties[player])
+                        takenNumber = len(bounties[player])
+                        bountyPrize = bounty * takenNumber
+                        players[player][OUT] += bountyPrize
+                        players[player][NOTES] += (tourneyTime +
                                                    " tournament " + name +
-                                                   " rebuys " + str(numRebuys * rebuy ) + os.linesep)
-                        csvRows.append([tourneyTime,name,'',runner,"rebuy",(numRebuys*rebuy),""])
+                                                   " took bounty for " + str(takenNumber) +
+                                                   " (" + takenList + ")" +
+                                                   " worth " + str(bountyPrize) + os.linesep)
+                        csvRows.append([tourneyTime, name, '', player, "bounty", "", bountyPrize])
 
-                    # register any winnings
-                    winAmount = 0
-                    winAmount = float(winString)
-                    if (winAmount > 0):
-                        players[runner][OUT] += winAmount
-                        players[runner][NOTES] += (tourneyTime +
-                                                   " tournament " + name +
-                                                   " cashes in place " + place + " for " + winString + os.linesep)
-                        csvRows.append([tourneyTime,name,'',runner,"cash","",winAmount])
+                print("Processed tournament " + name + " runners: " + parameters["Entrants"])
 
-        if (bounty > 0):
-            for player in bounties:
-                isNewPlayer(check=player)
-                takenList = ",".join(bounties[player])
-                takenNumber = len(bounties[player])
-                bountyPrize = bounty * takenNumber
-                players[player][OUT] += bountyPrize
-                players[player][NOTES] += (tourneyTime +
-                                           " tournament " + name +
-                                           " took bounty for " + str(takenNumber) +
-                                           " (" + takenList + ")" +
-                                           " worth " + str(bountyPrize) + os.linesep)
-                csvRows.append([tourneyTime, name, '', player, "bounty", "", bountyPrize])
+                # reset parameters in case there are additional tourhament listings
+                parameters = {}
+                name = ""
+                buyIn = 0
+                rebuy = 0
+                bounty = 0
+                runners = 0
+                rebuys = 0
+                bounties = {}
+                ticketIn = []
+                ticketOut = {}
 
-        print("Processed tournament " + name + " runners: " + parameters["Entrants"])
+
         return isTourney
 # end of processTournament function
 
