@@ -45,6 +45,7 @@
 # 2020-06-29 v0.7.2 change  skip prior option behavior to process multiple tables, files in any order
 # 2020-12-21 v0.8 initial support for processing tournament result files
 # 2021-02-15 v0.8.1 processing tournament result files now allows for multiple results set in same file
+# 2021-06-09 v0.8.2 output only specific player information
 #
 
 import argparse
@@ -445,6 +446,8 @@ parser.add_argument('-c','--csv', action="store_true",dest="doCsv",default=False
 parser.add_argument('-e','--email', action="store_true",dest="doEmail",default=False,help="Email player results.")
 parser.add_argument('-g','--glob', action="append",dest="fileglob",
                     help="Pass a file-matching pattern for pathname expansion. Process each filename matching the expansion.")
+parser.add_argument('-o','--output-player', action="append",dest="outputPlayers",
+                    help="Pass a specific player for output.")
 parser.add_argument('-p','--password', action="store",dest="password",
                     help=("Password for email account (" + config.get('DEFAULT',FROMADDRESS) + ")"))
 parser.add_argument('-q','--quiet', action="store_true",dest="quiet",default=False,help="Run in quiet mode with minimal output.")
@@ -797,9 +800,19 @@ for player in players.keys():
 
 
 
+    # if not running in quiet mode, output player info
     if(not args.quiet):
-        print(players[player][NOTES])
-        print("")
+        # check to see if specific players are being output
+        if (args.outputPlayers is None or player in args.outputPlayers):
+           print(players[player][NOTES])
+           print("")
+
+# if any specific players were isolated for output using the -o option, and they were not found
+# indicate that no output was available for that player name
+if (args.outputPlayers is not None):
+   for player in args.outputPlayers:
+       if (player not in players.keys()):
+           print("No output available for specified player: " + player)
 
 print("Net balance: " + "{0:.2f}".format(netBalance))
 
@@ -839,8 +852,9 @@ if (args.doEmail):
     date = datetime.datetime.now().strftime("%a, %d %b %Y %T %z (%Z)")
     emailCount = 0
 
+    emailPlayers = players if (args.outputPlayers is None) else args.outputPlayers
 
-    for player in players:
+    for player in emailPlayers:
         subj = config.get('DEFAULT',EMAIL_SUBJ_PREFIX) + " " + sessionDate
         if (player in resolvedScreenNames and EMAIL in resolvedScreenNames[player]):
             emailCount += 1
