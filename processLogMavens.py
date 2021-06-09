@@ -66,7 +66,7 @@ from smtplib import SMTP
 
 # script level constants
 # these are constants that are set in this script file and not intended to be edited or changed
-VERSION = "0.8.1"
+VERSION = "0.8.2"
 OPTIONS_FILE = "processLogMavens.ini"
 DEBUGLEVEL = 0
 LOCAL = "local"
